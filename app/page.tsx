@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Upload, FileText, Flame, AlertTriangle, CheckCircle, Target, Zap, TrendingUp, X, Loader2, Copy, Share2 } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
 
 interface RoastResult {
   overallScore: number;
@@ -34,10 +33,20 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [pdfjs, setPdfjs] = useState<any>(null);
 
-  // Initialize PDF.js worker
+  // Initialize PDF.js dynamically
   useEffect(() => {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    const loadPdfjs = async () => {
+      try {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+        setPdfjs(pdfjsLib);
+      } catch (err) {
+        console.error('Failed to load PDF.js:', err);
+      }
+    };
+    loadPdfjs();
   }, []);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -59,17 +68,20 @@ export default function Home() {
     if (files && files[0]) {
       await handleFile(files[0]);
     }
-  }, []);
+  }, [pdfjs]);
 
   const handleFile = async (file: File) => {
     setError(null);
 
     if (file.type === 'application/pdf') {
+      if (!pdfjs) {
+        setError('PDF parser is still loading. Please try again in a moment.');
+        return;
+      }
       setIsParsing(true);
       try {
-        // Client-side PDF parsing with pdfjs-dist
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
 
         let fullText = '';
         for (let i = 1; i <= pdf.numPages; i++) {
