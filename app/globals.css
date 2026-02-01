@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Fire animation for roast theme */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.fire-text {
+  background: linear-gradient(to right, #ff6b35, #f7931e, #ffcc00, #f7931e, #ff6b35);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 3s linear infinite;
+}
+
+@keyframes shine {
+  to { background-position: 200% center; }
+}
+
+/* Roast card styling */
+.roast-card {
+  background: linear-gradient(145deg, #1a1a2e, #16213e);
+  border: 1px solid #ff6b3520;
+}
+
+.roast-card:hover {
+  border-color: #ff6b3550;
+}
+
+/* Score ring */
+.score-ring {
+  background: conic-gradient(
+    #ff6b35 calc(var(--score) * 1%),
+    #2a2a4a calc(var(--score) * 1%)
+  );
+}
+
+/* Severity colors */
+.severity-critical { color: #ff4757; }
+.severity-major { color: #ff6b35; }
+.severity-minor { color: #ffa502; }
+.severity-suggestion { color: #2ed573; }
