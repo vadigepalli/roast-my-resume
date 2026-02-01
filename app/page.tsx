@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Upload, FileText, Flame, AlertTriangle, CheckCircle, Target, Zap, TrendingUp, X, Loader2, Copy, Share2 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
 
 interface RoastResult {
   overallScore: number;
@@ -32,6 +33,12 @@ export default function Home() {
   const [result, setResult] = useState<RoastResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+
+  // Initialize PDF.js worker
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  }, []);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -55,24 +62,35 @@ export default function Home() {
   }, []);
 
   const handleFile = async (file: File) => {
-    if (file.type === 'application/pdf') {
-      // For PDF, we'll send to API to parse
-      const formData = new FormData();
-      formData.append('file', file);
+    setError(null);
 
+    if (file.type === 'application/pdf') {
+      setIsParsing(true);
       try {
-        const response = await fetch('/api/parse-pdf', {
-          method: 'POST',
-          body: formData,
-        });
-        const data = await response.json();
-        if (data.text) {
-          setResumeText(data.text);
+        // Client-side PDF parsing with pdfjs-dist
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(' ');
+          fullText += pageText + '\n';
+        }
+
+        if (fullText.trim()) {
+          setResumeText(fullText.trim());
         } else {
-          setError('Could not parse PDF. Try pasting text instead.');
+          setError('Could not extract text from PDF. The PDF might be image-based. Try pasting text instead.');
         }
       } catch (err) {
+        console.error('PDF parsing error:', err);
         setError('Error parsing PDF. Try pasting text instead.');
+      } finally {
+        setIsParsing(false);
       }
     } else if (file.type === 'text/plain') {
       const text = await file.text();
@@ -206,11 +224,21 @@ export default function Home() {
                 id="file-upload"
               />
               <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-lg text-white mb-2">
-                  Drop your resume here or <span className="text-orange-500">browse</span>
-                </p>
-                <p className="text-sm text-gray-500">PDF or TXT files</p>
+                {isParsing ? (
+                  <>
+                    <Loader2 className="w-12 h-12 text-orange-500 mx-auto mb-4 animate-spin" />
+                    <p className="text-lg text-white mb-2">Parsing PDF...</p>
+                    <p className="text-sm text-gray-500">Extracting text from your resume</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg text-white mb-2">
+                      Drop your resume here or <span className="text-orange-500">browse</span>
+                    </p>
+                    <p className="text-sm text-gray-500">PDF or TXT files</p>
+                  </>
+                )}
               </label>
             </div>
 
