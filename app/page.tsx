@@ -1,6 +1,6 @@
 'use client';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Upload, FileText, Flame, CheckCircle, Target, TrendingUp, X, Loader2, Copy, Check, Share2, Sparkles } from 'lucide-react';
+import { Upload, FileText, Flame, CheckCircle, Target, TrendingUp, X, Loader2, Copy, Check, Share2, Sparkles, Wand2, Printer, Download } from 'lucide-react';
 
 declare global { interface Window { pdfjsLib: any; } }
 
@@ -10,6 +10,16 @@ interface RoastResult {
   strengths: string[]; missingKeywords: string[];
   atsScore: number; atsIssues: string[];
   rewrittenBullets: Array<{ original: string; improved: string; }>;
+}
+
+interface RebuiltResume {
+  name: string;
+  title: string;
+  contact: { email?: string; phone?: string; linkedin?: string; location?: string; };
+  summary: string;
+  experience: Array<{ company: string; title: string; dates: string; bullets: string[]; }>;
+  education: Array<{ school: string; degree: string; year: string; }>;
+  skills: string[];
 }
 
 const SAMPLE_RESUME = `John Smith
@@ -43,6 +53,9 @@ export default function Home() {
   const [pdfReady, setPdfReady] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [shared, setShared] = useState(false);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuiltResume, setRebuiltResume] = useState<RebuiltResume | null>(null);
+  const [showRebuilt, setShowRebuilt] = useState(false);
   const scriptLoaded = useRef(false);
 
   useEffect(() => {
@@ -101,8 +114,7 @@ export default function Home() {
     if (!trimmed) { setError('Please add your resume first'); return; }
     if (trimmed.length < 100) { setError('Resume seems too short. Please add more content.'); return; }
     if (trimmed.length > 15000) { setError('Resume is too long. Please shorten to under 15,000 characters.'); return; }
-
-    setIsLoading(true); setError(null); setResult(null);
+    setIsLoading(true); setError(null); setResult(null); setRebuiltResume(null);
     try {
       const res = await fetch('/api/roast', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -115,10 +127,77 @@ export default function Home() {
     finally { setIsLoading(false); }
   };
 
-  const handleTryDemo = () => {
-    setResumeText(SAMPLE_RESUME);
-    setError(null);
+  const handleRebuild = async () => {
+    if (!result) return;
+    setIsRebuilding(true); setError(null);
+    try {
+      const res = await fetch('/api/rebuild', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeText, roastResult: result }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to rebuild');
+      setRebuiltResume(data);
+      setShowRebuilt(true);
+    } catch (e: any) { setError(e.message || 'Failed to rebuild resume.'); }
+    finally { setIsRebuilding(false); }
   };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow || !rebuiltResume) return;
+
+    const html = `<!DOCTYPE html>
+<html><head><title>${rebuiltResume.name} - Resume</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Georgia', serif; font-size: 11pt; line-height: 1.4; color: #333; max-width: 8.5in; margin: 0 auto; padding: 0.5in; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+  .name { font-size: 24pt; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+  .title { font-size: 12pt; color: #555; margin-bottom: 8px; }
+  .contact { font-size: 10pt; color: #666; }
+  .contact span { margin: 0 8px; }
+  .section { margin: 20px 0; }
+  .section-title { font-size: 12pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #999; padding-bottom: 3px; margin-bottom: 12px; color: #333; }
+  .summary { font-style: italic; color: #444; margin-bottom: 15px; }
+  .job { margin-bottom: 15px; }
+  .job-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .job-title { font-weight: bold; }
+  .job-company { color: #555; }
+  .job-dates { color: #666; font-size: 10pt; }
+  .bullets { padding-left: 20px; }
+  .bullets li { margin-bottom: 4px; }
+  .edu-item { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .skills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .skill { background: #f0f0f0; padding: 3px 10px; border-radius: 3px; font-size: 10pt; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<div class="header">
+  <div class="name">${rebuiltResume.name}</div>
+  <div class="title">${rebuiltResume.title}</div>
+  <div class="contact">
+    ${rebuiltResume.contact.email ? `<span>${rebuiltResume.contact.email}</span>` : ''}
+    ${rebuiltResume.contact.phone ? `<span>${rebuiltResume.contact.phone}</span>` : ''}
+    ${rebuiltResume.contact.location ? `<span>${rebuiltResume.contact.location}</span>` : ''}
+    ${rebuiltResume.contact.linkedin ? `<span>${rebuiltResume.contact.linkedin}</span>` : ''}
+  </div>
+</div>
+<div class="section"><div class="section-title">Professional Summary</div><p class="summary">${rebuiltResume.summary}</p></div>
+<div class="section"><div class="section-title">Experience</div>
+${rebuiltResume.experience.map(job => `<div class="job"><div class="job-header"><div><span class="job-title">${job.title}</span> <span class="job-company">| ${job.company}</span></div><div class="job-dates">${job.dates}</div></div><ul class="bullets">${job.bullets.map(b => `<li>${b}</li>`).join('')}</ul></div>`).join('')}
+</div>
+<div class="section"><div class="section-title">Education</div>
+${rebuiltResume.education.map(edu => `<div class="edu-item"><div><strong>${edu.degree}</strong>, ${edu.school}</div><div>${edu.year}</div></div>`).join('')}
+</div>
+<div class="section"><div class="section-title">Skills</div><div class="skills">${rebuiltResume.skills.map(s => `<span class="skill">${s}</span>`).join('')}</div></div>
+<script>window.onload = () => window.print();</script>
+</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const handleTryDemo = () => { setResumeText(SAMPLE_RESUME); setError(null); };
 
   const copyBullet = async (text: string, index: number) => {
     await navigator.clipboard.writeText(text);
@@ -128,18 +207,81 @@ export default function Home() {
 
   const shareResult = async () => {
     if (!result) return;
-    const text = `🔥 My Resume Roast Score: ${result.overallScore}/100\n\n"${result.verdict}"\n\nGet your resume roasted at ${window.location.href}`;
-    if (navigator.share) {
-      try { await navigator.share({ text }); }
-      catch { await navigator.clipboard.writeText(text); setShared(true); }
-    } else {
-      await navigator.clipboard.writeText(text);
-      setShared(true);
-    }
+    const text = `🔥 My Resume Roast Score: ${result.overallScore}/100\n\n"${result.verdict}"\n\nGet yours at ${window.location.href}`;
+    try { await navigator.clipboard.writeText(text); setShared(true); } catch {}
     setTimeout(() => setShared(false), 2000);
   };
 
   const sevColor = (s: string) => s === 'critical' ? 'border-red-500/50 bg-red-500/10' : s === 'major' ? 'border-orange-500/50 bg-orange-500/10' : s === 'minor' ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-green-500/50 bg-green-500/10';
+
+  // Rebuilt Resume Modal
+  if (showRebuilt && rebuiltResume) {
+    return (
+      <main className="min-h-screen bg-white text-gray-900">
+        <div className="max-w-4xl mx-auto p-8">
+          <div className="flex justify-between items-center mb-8 print:hidden">
+            <button onClick={() => setShowRebuilt(false)} className="text-gray-600 hover:text-gray-900 flex items-center gap-2">
+              <X className="w-4 h-4" /> Back to Results
+            </button>
+            <button onClick={handlePrint} className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white font-medium rounded-lg flex items-center gap-2 hover:scale-105 transition-transform">
+              <Download className="w-4 h-4" /> Download PDF
+            </button>
+          </div>
+
+          <div className="bg-gray-50 border rounded-xl p-8 shadow-sm">
+            <div className="text-center border-b-2 border-gray-300 pb-6 mb-6">
+              <h1 className="text-3xl font-bold tracking-wide uppercase">{rebuiltResume.name}</h1>
+              <p className="text-gray-600 mt-1">{rebuiltResume.title}</p>
+              <p className="text-sm text-gray-500 mt-2">
+                {[rebuiltResume.contact.email, rebuiltResume.contact.phone, rebuiltResume.contact.location, rebuiltResume.contact.linkedin].filter(Boolean).join(' • ')}
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Professional Summary</h2>
+              <p className="text-gray-700 italic">{rebuiltResume.summary}</p>
+            </div>
+
+            <div className="mb-6">
+              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Experience</h2>
+              {rebuiltResume.experience.map((job, i) => (
+                <div key={i} className="mb-4">
+                  <div className="flex justify-between items-start">
+                    <div><span className="font-semibold">{job.title}</span> <span className="text-gray-600">| {job.company}</span></div>
+                    <span className="text-gray-500 text-sm">{job.dates}</span>
+                  </div>
+                  <ul className="list-disc list-inside mt-2 text-gray-700 space-y-1">
+                    {job.bullets.map((bullet, j) => <li key={j}>{bullet}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-6">
+              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Education</h2>
+              {rebuiltResume.education.map((edu, i) => (
+                <div key={i} className="flex justify-between mb-2">
+                  <div><span className="font-semibold">{edu.degree}</span>, {edu.school}</div>
+                  <span className="text-gray-500">{edu.year}</span>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Skills</h2>
+              <div className="flex flex-wrap gap-2">
+                {rebuiltResume.skills.map((skill, i) => (
+                  <span key={i} className="px-3 py-1 bg-gray-200 rounded text-sm">{skill}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-center text-gray-400 text-xs mt-6 print:hidden">⚠️ AI-generated resume. Please review for accuracy before using.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen">
@@ -166,8 +308,8 @@ export default function Home() {
               <div className="flex items-center gap-4 mb-4"><div className="flex-1 h-px bg-white/10" /><span className="text-gray-500 text-sm">or paste resume</span><div className="flex-1 h-px bg-white/10" /></div>
               <textarea value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste your resume text here..." rows={10} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 outline-none resize-none font-mono text-sm" />
               <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-gray-500">{resumeText.length.toLocaleString()} / 15,000 characters</span>
-                <button onClick={handleTryDemo} className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"><Sparkles className="w-3 h-3" />Try with sample resume</button>
+                <span className="text-xs text-gray-500">{resumeText.length.toLocaleString()} / 15,000</span>
+                <button onClick={handleTryDemo} className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"><Sparkles className="w-3 h-3" />Try demo</button>
               </div>
             </div>
             {error && <div className="max-w-2xl mx-auto p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400 text-center">{error}</div>}
@@ -179,12 +321,18 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <button onClick={() => setResult(null)} className="text-gray-400 hover:text-white flex items-center gap-2"><X className="w-4 h-4" /> Start Over</button>
-              <button onClick={shareResult} className="text-orange-500 hover:text-orange-400 flex items-center gap-2 px-4 py-2 border border-orange-500/30 rounded-lg">
-                {shared ? <><Check className="w-4 h-4" />Copied!</> : <><Share2 className="w-4 h-4" />Share Score</>}
-              </button>
+            <div className="flex justify-between items-center flex-wrap gap-4">
+              <button onClick={() => { setResult(null); setRebuiltResume(null); }} className="text-gray-400 hover:text-white flex items-center gap-2"><X className="w-4 h-4" /> Start Over</button>
+              <div className="flex gap-3">
+                <button onClick={shareResult} className="text-orange-500 hover:text-orange-400 flex items-center gap-2 px-4 py-2 border border-orange-500/30 rounded-lg text-sm">
+                  {shared ? <><Check className="w-4 h-4" />Copied!</> : <><Share2 className="w-4 h-4" />Share</>}
+                </button>
+                <button onClick={handleRebuild} disabled={isRebuilding} className="bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:scale-105 transition-transform disabled:opacity-50">
+                  {isRebuilding ? <><Loader2 className="w-4 h-4 animate-spin" />Rebuilding...</> : <><Wand2 className="w-4 h-4" />Rebuild Resume</>}
+                </button>
+              </div>
             </div>
+            {error && <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400 text-center">{error}</div>}
             <div className="text-center space-y-6">
               <div className="w-32 h-32 rounded-full p-2 score-ring mx-auto" style={{ '--score': result.overallScore } as React.CSSProperties}>
                 <div className="w-full h-full rounded-full bg-[#0a0a0a] flex items-center justify-center"><div><div className="text-4xl font-bold text-white">{result.overallScore}</div><div className="text-xs text-gray-400">/ 100</div></div></div>
