@@ -30,9 +30,9 @@ function checkRateLimit(ip: string): boolean {
 // Clean up old entries periodically
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, record] of rateLimit.entries()) {
+  rateLimit.forEach((record, ip) => {
     if (now > record.resetTime) rateLimit.delete(ip);
-  }
+  });
 }, 60000);
 
 export const maxDuration = 60;
